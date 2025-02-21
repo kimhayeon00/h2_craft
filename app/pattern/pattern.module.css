@@ -1,0 +1,249 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.container h1 {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: var(--text-color);
+  font-size: 2.5rem;
+}
+
+.uploadSection {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.fileInput {
+  display: none;
+}
+
+.uploadButton {
+  background: white;
+  border-radius: 15px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  width: 400px;
+  height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin: 0 auto;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-color);
+}
+
+.uploadButton:hover {
+  transform: translateY(-5px);
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .uploadButton {
+    width: 90%;
+    height: 80px;
+  }
+}
+
+.imageSection {
+  margin-top: 2rem;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.controlItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.controlItem label {
+  min-width: 80px;
+  color: var(--text-color);
+}
+
+.controlItem span {
+  min-width: 50px;
+  color: var(--text-color);
+}
+
+.slider {
+  flex: 1;
+  height: 2px;
+  -webkit-appearance: none;
+  background: var(--primary-color);
+  border-radius: 2px;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  background: var(--primary-color);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+.imageContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.originalImage,
+.pixelatedImage {
+  width: 100%;
+  height: auto;
+  border-radius: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.colorPalette {
+  background: white;
+  padding: 2rem;
+  border-radius: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.colorPalette h3 {
+  color: var(--text-color);
+  margin-bottom: 1rem;
+}
+
+.colors {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.colorItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.colorSwatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.colorInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--text-color);
+}
+
+.actionButtons {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.saveButton,
+.editButton,
+.resetButton {
+  flex: 1;
+  padding: 1rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.saveButton {
+  background: var(--primary-color);
+  color: white;
+}
+
+.saveButton:hover {
+  background: var(--primary-dark-color);
+}
+
+.editButton {
+  background: var(--accent-color);
+  color: white;
+}
+
+.editButton:hover {
+  background: var(--accent-dark-color);
+}
+
+.resetButton {
+  background: var(--text-color);
+  color: white;
+}
+
+.resetButton:hover {
+  background: var(--text-dark-color);
+}
+
+.editMode {
+  margin-top: 2rem;
+}
+
+.colorButtons {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  justify-content: center;
+}
+
+.colorButton {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--primary-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.colorButton:hover {
+  transform: scale(1.1);
+}
+
+.colorButton.selected {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px var(--primary-color);
+}
+
+.editableImage {
+  cursor: crosshair;
+  position: relative;
+  user-select: none;
+}
+
+.pixelatedImage {
+  pointer-events: none;
+} 
