@@ -3,13 +3,9 @@ const nextConfig = {
   images: {
     domains: ['hyyydnxdcaugunsxqcrb.supabase.co'], // Supabase 프로젝트의 도메인
   },
-  // hydration 에러 무시 설정 추가
-  experimental: {
-    // 특정 속성에 대한 hydration 에러 무시
-    skipTrailingSlashRedirect: true,
-    skipMiddlewareUrlNormalize: true,
-  },
-  reactStrictMode: false, // strict mode 비활성화
+  skipTrailingSlashRedirect: true,
+  skipMiddlewareUrlNormalize: true,
+  reactStrictMode: false,
   async headers() {
     const isDevelopment = process.env.NODE_ENV === 'development';
 

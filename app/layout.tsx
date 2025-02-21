@@ -30,7 +30,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${notoSansKr.className}`}>
         {children}
       </body>
     </html>

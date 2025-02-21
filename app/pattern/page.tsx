@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import styles from './pattern.module.css';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 
 interface Color {
@@ -44,11 +45,10 @@ export default function PatternPage() {
 
   useEffect(() => {
     if (image) {
-      const img = new Image();
+      const img = document.createElement('img');
       img.onload = () => {
         pixelateImage(img, pixelSize);
-        // 픽셀 사이즈나 색상 개수가 변경될 때마다 원본 데이터도 업데이트
-        setOriginalPixelatedData(null);  // 이전 원본 데이터 초기화
+        setOriginalPixelatedData(null);
       };
       img.src = image;
     }
@@ -387,10 +387,7 @@ export default function PatternPage() {
     if (!pixelatedImageData || !pixelDimensions) return;
 
     try {
-      // 기본 파일명으로 저장
       const fileName = `h2_craft_pattern_${Date.now()}.png`;
-
-      // Base64 데이터를 Blob으로 변환
       const base64Data = pixelatedImageData.split(',')[1];
       const binaryData = atob(base64Data);
       const array = new Uint8Array(binaryData.length);
@@ -399,7 +396,6 @@ export default function PatternPage() {
       }
       const blob = new Blob([array], { type: 'image/png' });
 
-      // 다운로드 링크 생성 및 클릭
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = fileName;
@@ -408,7 +404,6 @@ export default function PatternPage() {
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
-      // 저장 완료 메시지
       alert('도안이 저장되었습니다!');
       router.push('/');
     } catch (error) {
@@ -495,16 +490,20 @@ export default function PatternPage() {
           </div>
           
           <div className={styles.imageContainer}>
-            <img 
-              src={image} 
+            <Image 
+              src={image || ''} 
               alt="원본 이미지"
               className={styles.originalImage}
+              width={800}
+              height={600}
             />
             {pixelatedImageData && (
-              <img 
+              <Image 
                 src={pixelatedImageData}
                 alt="픽셀화된 이미지"
                 className={styles.pixelatedImage}
+                width={800}
+                height={600}
               />
             )}
           </div>
@@ -592,13 +591,15 @@ export default function PatternPage() {
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}  // 영역을 벗어날 때도 드래그 종료
+                onMouseLeave={handleMouseUp}
               >
-                <img 
+                <Image 
                   src={pixelatedImageData || ''}
                   alt="수정 가능한 도안"
                   className={styles.pixelatedImage}
-                  draggable={false}  // 이미지 드래그 방지
+                  width={800}
+                  height={600}
+                  draggable={false}
                 />
               </div>
             </div>
