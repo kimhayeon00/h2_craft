@@ -43,159 +43,20 @@ export default function PatternPage() {
     }
   };
 
-  useEffect(() => {
-    if (image) {
-      const img = document.createElement('img');
-      img.onload = () => {
-        pixelateImage(img, pixelSize);
-        setOriginalPixelatedData(null);
-      };
-      img.src = image;
-    }
-  }, [image, pixelSize, colorCount]);
-
-  useEffect(() => {
-    if (pixelatedImageData && !originalPixelatedData) {
-      setOriginalPixelatedData(pixelatedImageData);
-    }
-  }, [pixelatedImageData, originalPixelatedData]);
-
-  // 색상 유사성 임계값을 더 낮게 조정
-  const threshold = 20; // 30에서 20으로 변경
-
-  // 색상 거리 계산 함수 개선
-  const getColorDistance = (color1: Color, color2: Color) => {
-    // Lab 색공간을 사용하여 더 정확한 색상 차이 계산
-    const lab1 = rgbToLab(color1);
-    const lab2 = rgbToLab(color2);
-    
-    return Math.sqrt(
-      Math.pow(lab1.l - lab2.l, 2) +
-      Math.pow(lab1.a - lab2.a, 2) +
-      Math.pow(lab1.b - lab2.b, 2)
-    );
-  };
-
-  // RGB to Lab 변환 함수
-  const rgbToLab = (color: Color) => {
-    // RGB to XYZ
-    let r = color.r / 255;
-    let g = color.g / 255;
-    let b = color.b / 255;
-    
-    r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-    g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-    b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
-    
-    const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) * 100;
-    const y = (r * 0.2126 + g * 0.7152 + b * 0.0722) * 100;
-    const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) * 100;
-    
-    // XYZ to Lab
-    const xn = 95.047;
-    const yn = 100.000;
-    const zn = 108.883;
-    
-    return {
-      l: 116 * f(y/yn) - 16,
-      a: 500 * (f(x/xn) - f(y/yn)),
-      b: 200 * (f(y/yn) - f(z/zn))
-    };
-  };
-
-  const f = (t: number) => {
-    return t > Math.pow(6/29, 3) 
-      ? Math.pow(t, 1/3) 
-      : (1/3) * Math.pow(29/6, 2) * t + 4/29;
-  };
-
-  // K-means 클러스터링으로 주요 색상 추출
-  const extractDominantColors = (imageData: ImageData, maxColors: number = 5): Color[] => {
-    const pixels: Color[] = [];
-    const data = imageData.data;
-    const totalPixels = imageData.width * imageData.height;
-    
-    // 픽셀 데이터 수집 및 빈도 계산
-    const colorFrequency: { [key: string]: { color: Color; count: number } } = {};
-    
-    // 모든 픽셀의 색상 정보 수집
-    for (let i = 0; i < data.length; i += 4) {
-      const color = {
-        r: data[i],
-        g: data[i + 1],
-        b: data[i + 2]
-      };
-      const key = `${color.r},${color.g},${color.b}`;
-      
-      if (colorFrequency[key]) {
-        colorFrequency[key].count++;
-      } else {
-        colorFrequency[key] = { color, count: 1 };
-      }
-    }
-
-    // 색상 그룹화 함수
-    const groupSimilarColors = (colors: { color: Color; count: number }[]): { color: Color; count: number }[] => {
-      const groups: { color: Color; count: number }[] = [];
-
-      colors.forEach(item => {
-        // 이미 비슷한 색상 그룹이 있는지 확인
-        const similarGroup = groups.find(group => 
-          getColorDistance(group.color, item.color) < threshold
-        );
-
-        if (similarGroup) {
-          // 비슷한 색상 그룹이 있으면 가중 평균으로 색상 업데이트
-          const totalCount = similarGroup.count + item.count;
-          similarGroup.color = {
-            r: Math.round((similarGroup.color.r * similarGroup.count + item.color.r * item.count) / totalCount),
-            g: Math.round((similarGroup.color.g * similarGroup.count + item.color.g * item.count) / totalCount),
-            b: Math.round((similarGroup.color.b * similarGroup.count + item.color.b * item.count) / totalCount)
-          };
-          similarGroup.count += item.count;
-        } else {
-          // 새로운 그룹 생성
-          groups.push({ ...item });
-        }
-      });
-
-      return groups;
-    };
-
-    // 색상 빈도순으로 정렬
-    const sortedColors = Object.values(colorFrequency)
-      .sort((a, b) => b.count - a.count);
-
-    // 비슷한 색상들을 그룹화
-    const groupedColors = groupSimilarColors(sortedColors);
-
-    // 사용 빈도가 높은 순으로 정렬하고 상위 색상 선택
-    const dominantColors = groupedColors
-      .sort((a, b) => b.count - a.count)
-      .slice(0, maxColors)
-      .map(item => item.color);
-
-    return dominantColors;
-  };
-
   const pixelateImage = (img: HTMLImageElement, pixelSize: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d', { 
       willReadFrequently: true,
-      alpha: false  // 알파 채널 비활성화로 성능 향상
+      alpha: false
     });
     if (!ctx) return;
 
-    // 최대 크기 증가
-    const maxWidth = 1200;  // 800에서 1200으로 증가
-    const maxHeight = 1200; // 800에서 1200으로 증가
-
-    // 원본 이미지의 비율 계산
+    const maxWidth = 1200;
+    const maxHeight = 1200;
     const aspectRatio = img.width / img.height;
 
-    // 이미지 크기 조정 (비율 유지)
     let width = img.width;
     let height = img.height;
 
@@ -209,35 +70,27 @@ export default function PatternPage() {
       }
     }
 
-    // 픽셀 크기로 나누어 떨어지도록 조정
     width = Math.floor(width / pixelSize) * pixelSize;
     height = Math.floor(height / pixelSize) * pixelSize;
 
-    // 픽셀화된 이미지의 가로, 세로 픽셀 수 계산
     const pixelWidth = Math.floor(width / pixelSize);
     const pixelHeight = Math.floor(height / pixelSize);
     setPixelDimensions({ width: pixelWidth, height: pixelHeight });
 
-    // 임시 캔버스 생성 (고품질 스케일링을 위한)
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d', { alpha: false });
     if (!tempCtx) return;
 
-    // 임시 캔버스 크기 설정
     tempCanvas.width = width;
     tempCanvas.height = height;
 
-    // 이미지 스케일링 품질 설정
     tempCtx.imageSmoothingEnabled = true;
     tempCtx.imageSmoothingQuality = 'high';
-    
-    // 임시 캔버스에 이미지 그리기
     tempCtx.drawImage(img, 0, 0, width, height);
 
-    // 메인 캔버스 설정
     canvas.width = width;
     canvas.height = height;
-    ctx.imageSmoothingEnabled = false;  // 픽셀화된 이미지를 선명하게 표시
+    ctx.imageSmoothingEnabled = false;
 
     const imageData = tempCtx.getImageData(0, 0, width, height);
     const dominantColors = extractDominantColors(imageData, colorCount);
@@ -321,6 +174,137 @@ export default function PatternPage() {
 
     setDominantColors(colorsWithPercentage);
     setPixelatedImageData(canvas.toDataURL());
+  };
+
+  useEffect(() => {
+    if (image) {
+      const img = document.createElement('img');
+      img.onload = () => {
+        pixelateImage(img, pixelSize);
+        setOriginalPixelatedData(null);
+      };
+      img.src = image;
+    }
+  }, [image, pixelSize, colorCount, pixelateImage]);
+
+  useEffect(() => {
+    if (pixelatedImageData && !originalPixelatedData) {
+      setOriginalPixelatedData(pixelatedImageData);
+    }
+  }, [pixelatedImageData, originalPixelatedData]);
+
+  // 색상 유사성 임계값을 더 낮게 조정
+  const threshold = 20; // 30에서 20으로 변경
+
+  // 색상 거리 계산 함수 개선
+  const getColorDistance = (color1: Color, color2: Color) => {
+    // Lab 색공간을 사용하여 더 정확한 색상 차이 계산
+    const lab1 = rgbToLab(color1);
+    const lab2 = rgbToLab(color2);
+    
+    return Math.sqrt(
+      Math.pow(lab1.l - lab2.l, 2) +
+      Math.pow(lab1.a - lab2.a, 2) +
+      Math.pow(lab1.b - lab2.b, 2)
+    );
+  };
+
+  // RGB to Lab 변환 함수
+  const rgbToLab = (color: Color) => {
+    // RGB to XYZ
+    let r = color.r / 255;
+    let g = color.g / 255;
+    let b = color.b / 255;
+    
+    r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+    g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+    b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+    
+    const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) * 100;
+    const y = (r * 0.2126 + g * 0.7152 + b * 0.0722) * 100;
+    const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) * 100;
+    
+    // XYZ to Lab
+    const xn = 95.047;
+    const yn = 100.000;
+    const zn = 108.883;
+    
+    return {
+      l: 116 * f(y/yn) - 16,
+      a: 500 * (f(x/xn) - f(y/yn)),
+      b: 200 * (f(y/yn) - f(z/zn))
+    };
+  };
+
+  const f = (t: number) => {
+    return t > Math.pow(6/29, 3) 
+      ? Math.pow(t, 1/3) 
+      : (1/3) * Math.pow(29/6, 2) * t + 4/29;
+  };
+
+  // K-means 클러스터링으로 주요 색상 추출
+  const extractDominantColors = (imageData: ImageData, maxColors: number = 5): Color[] => {
+    const data = imageData.data;
+    const colorFrequency: { [key: string]: { color: Color; count: number } } = {};
+    
+    // 모든 픽셀의 색상 정보 수집
+    for (let i = 0; i < data.length; i += 4) {
+      const color = {
+        r: data[i],
+        g: data[i + 1],
+        b: data[i + 2]
+      };
+      const key = `${color.r},${color.g},${color.b}`;
+      
+      if (colorFrequency[key]) {
+        colorFrequency[key].count++;
+      } else {
+        colorFrequency[key] = { color, count: 1 };
+      }
+    }
+
+    // 색상 그룹화 함수
+    const groupSimilarColors = (colors: { color: Color; count: number }[]): { color: Color; count: number }[] => {
+      const groups: { color: Color; count: number }[] = [];
+
+      colors.forEach(item => {
+        // 이미 비슷한 색상 그룹이 있는지 확인
+        const similarGroup = groups.find(group => 
+          getColorDistance(group.color, item.color) < threshold
+        );
+
+        if (similarGroup) {
+          // 비슷한 색상 그룹이 있으면 가중 평균으로 색상 업데이트
+          const totalCount = similarGroup.count + item.count;
+          similarGroup.color = {
+            r: Math.round((similarGroup.color.r * similarGroup.count + item.color.r * item.count) / totalCount),
+            g: Math.round((similarGroup.color.g * similarGroup.count + item.color.g * item.count) / totalCount),
+            b: Math.round((similarGroup.color.b * similarGroup.count + item.color.b * item.count) / totalCount)
+          };
+          similarGroup.count += item.count;
+        } else {
+          // 새로운 그룹 생성
+          groups.push({ ...item });
+        }
+      });
+
+      return groups;
+    };
+
+    // 색상 빈도순으로 정렬
+    const sortedColors = Object.values(colorFrequency)
+      .sort((a, b) => b.count - a.count);
+
+    // 비슷한 색상들을 그룹화
+    const groupedColors = groupSimilarColors(sortedColors);
+
+    // 사용 빈도가 높은 순으로 정렬하고 상위 색상 선택
+    const dominantColors = groupedColors
+      .sort((a, b) => b.count - a.count)
+      .slice(0, maxColors)
+      .map(item => item.color);
+
+    return dominantColors;
   };
 
   // 마우스 다운 핸들러
@@ -414,14 +398,11 @@ export default function PatternPage() {
 
   // 되돌리기 핸들러 수정
   const handleReset = () => {
-    // 원본 도안으로 복원
     setPixelatedImageData(originalPixelatedData);
-    // 선택된 색상 초기화
     setSelectedColor(null);
-    // 캔버스도 원본 상태로 복원
     const canvas = canvasRef.current;
     if (canvas && originalPixelatedData) {
-      const img = new Image();
+      const img = document.createElement('img');
       img.onload = () => {
         const ctx = canvas.getContext('2d');
         if (ctx) {
@@ -579,10 +560,7 @@ export default function PatternPage() {
                     style={{
                       backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})`
                     }}
-                    onClick={(e) => {
-                      setSelectedColor(color);
-                      // 버튼 클릭 시에는 픽셀 클릭 이벤트를 발생시키지 않음
-                    }}
+                    onClick={() => setSelectedColor(color)}
                   />
                 ))}
               </div>
