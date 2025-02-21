@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './pattern.module.css';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -32,18 +32,107 @@ export default function PatternPage() {
   const [colorCount, setColorCount] = useState(2);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  // 색상 유사성 임계값을 더 낮게 조정
+  const threshold = 20;
 
-  const pixelateImage = (img: HTMLImageElement, pixelSize: number) => {
+  const f = useCallback((t: number) => {
+    return t > Math.pow(6/29, 3) 
+      ? Math.pow(t, 1/3) 
+      : (1/3) * Math.pow(29/6, 2) * t + 4/29;
+  }, []);
+
+  const rgbToLab = useCallback((color: Color) => {
+    let r = color.r / 255;
+    let g = color.g / 255;
+    let b = color.b / 255;
+    
+    r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+    g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+    b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+    
+    const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) * 100;
+    const y = (r * 0.2126 + g * 0.7152 + b * 0.0722) * 100;
+    const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) * 100;
+    
+    const xn = 95.047;
+    const yn = 100.000;
+    const zn = 108.883;
+    
+    return {
+      l: 116 * f(y/yn) - 16,
+      a: 500 * (f(x/xn) - f(y/yn)),
+      b: 200 * (f(y/yn) - f(z/zn))
+    };
+  }, [f]);
+
+  const getColorDistance = useCallback((color1: Color, color2: Color) => {
+    const lab1 = rgbToLab(color1);
+    const lab2 = rgbToLab(color2);
+    
+    return Math.sqrt(
+      Math.pow(lab1.l - lab2.l, 2) +
+      Math.pow(lab1.a - lab2.a, 2) +
+      Math.pow(lab1.b - lab2.b, 2)
+    );
+  }, [rgbToLab]);
+
+  const extractDominantColors = useCallback((imageData: ImageData, maxColors: number = 5): Color[] => {
+    const data = imageData.data;
+    const colorFrequency: { [key: string]: { color: Color; count: number } } = {};
+    
+    for (let i = 0; i < data.length; i += 4) {
+      const color = {
+        r: data[i],
+        g: data[i + 1],
+        b: data[i + 2]
+      };
+      const key = `${color.r},${color.g},${color.b}`;
+      
+      if (colorFrequency[key]) {
+        colorFrequency[key].count++;
+      } else {
+        colorFrequency[key] = { color, count: 1 };
+      }
+    }
+
+    const groupSimilarColors = (colors: { color: Color; count: number }[]): { color: Color; count: number }[] => {
+      const groups: { color: Color; count: number }[] = [];
+
+      colors.forEach(item => {
+        const similarGroup = groups.find(group => 
+          getColorDistance(group.color, item.color) < threshold
+        );
+
+        if (similarGroup) {
+          const totalCount = similarGroup.count + item.count;
+          similarGroup.color = {
+            r: Math.round((similarGroup.color.r * similarGroup.count + item.color.r * item.count) / totalCount),
+            g: Math.round((similarGroup.color.g * similarGroup.count + item.color.g * item.count) / totalCount),
+            b: Math.round((similarGroup.color.b * similarGroup.count + item.color.b * item.count) / totalCount)
+          };
+          similarGroup.count += item.count;
+        } else {
+          groups.push({ ...item });
+        }
+      });
+
+      return groups;
+    };
+
+    const sortedColors = Object.values(colorFrequency)
+      .sort((a, b) => b.count - a.count);
+
+    const groupedColors = groupSimilarColors(sortedColors);
+
+    const dominantColors = groupedColors
+      .sort((a, b) => b.count - a.count)
+      .slice(0, maxColors)
+      .map(item => item.color);
+
+    return dominantColors;
+  }, [getColorDistance, threshold]);
+
+  const pixelateImage = useCallback((img: HTMLImageElement, pixelSize: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -100,7 +189,7 @@ export default function PatternPage() {
 
     for (let y = 0; y < canvas.height; y += pixelSize) {
       for (let x = 0; x < canvas.width; x += pixelSize) {
-        let blockColors: Color[] = [];
+        const blockColors: Color[] = [];
 
         // 블록 내의 픽셀 색상 수집
         for (let py = y; py < Math.min(y + pixelSize, canvas.height); py++) {
@@ -174,6 +263,17 @@ export default function PatternPage() {
 
     setDominantColors(colorsWithPercentage);
     setPixelatedImageData(canvas.toDataURL());
+  }, [canvasRef, colorCount, extractDominantColors, getColorDistance]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   useEffect(() => {
@@ -192,120 +292,6 @@ export default function PatternPage() {
       setOriginalPixelatedData(pixelatedImageData);
     }
   }, [pixelatedImageData, originalPixelatedData]);
-
-  // 색상 유사성 임계값을 더 낮게 조정
-  const threshold = 20; // 30에서 20으로 변경
-
-  // 색상 거리 계산 함수 개선
-  const getColorDistance = (color1: Color, color2: Color) => {
-    // Lab 색공간을 사용하여 더 정확한 색상 차이 계산
-    const lab1 = rgbToLab(color1);
-    const lab2 = rgbToLab(color2);
-    
-    return Math.sqrt(
-      Math.pow(lab1.l - lab2.l, 2) +
-      Math.pow(lab1.a - lab2.a, 2) +
-      Math.pow(lab1.b - lab2.b, 2)
-    );
-  };
-
-  // RGB to Lab 변환 함수
-  const rgbToLab = (color: Color) => {
-    // RGB to XYZ
-    let r = color.r / 255;
-    let g = color.g / 255;
-    let b = color.b / 255;
-    
-    r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-    g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-    b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
-    
-    const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) * 100;
-    const y = (r * 0.2126 + g * 0.7152 + b * 0.0722) * 100;
-    const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) * 100;
-    
-    // XYZ to Lab
-    const xn = 95.047;
-    const yn = 100.000;
-    const zn = 108.883;
-    
-    return {
-      l: 116 * f(y/yn) - 16,
-      a: 500 * (f(x/xn) - f(y/yn)),
-      b: 200 * (f(y/yn) - f(z/zn))
-    };
-  };
-
-  const f = (t: number) => {
-    return t > Math.pow(6/29, 3) 
-      ? Math.pow(t, 1/3) 
-      : (1/3) * Math.pow(29/6, 2) * t + 4/29;
-  };
-
-  // K-means 클러스터링으로 주요 색상 추출
-  const extractDominantColors = (imageData: ImageData, maxColors: number = 5): Color[] => {
-    const data = imageData.data;
-    const colorFrequency: { [key: string]: { color: Color; count: number } } = {};
-    
-    // 모든 픽셀의 색상 정보 수집
-    for (let i = 0; i < data.length; i += 4) {
-      const color = {
-        r: data[i],
-        g: data[i + 1],
-        b: data[i + 2]
-      };
-      const key = `${color.r},${color.g},${color.b}`;
-      
-      if (colorFrequency[key]) {
-        colorFrequency[key].count++;
-      } else {
-        colorFrequency[key] = { color, count: 1 };
-      }
-    }
-
-    // 색상 그룹화 함수
-    const groupSimilarColors = (colors: { color: Color; count: number }[]): { color: Color; count: number }[] => {
-      const groups: { color: Color; count: number }[] = [];
-
-      colors.forEach(item => {
-        // 이미 비슷한 색상 그룹이 있는지 확인
-        const similarGroup = groups.find(group => 
-          getColorDistance(group.color, item.color) < threshold
-        );
-
-        if (similarGroup) {
-          // 비슷한 색상 그룹이 있으면 가중 평균으로 색상 업데이트
-          const totalCount = similarGroup.count + item.count;
-          similarGroup.color = {
-            r: Math.round((similarGroup.color.r * similarGroup.count + item.color.r * item.count) / totalCount),
-            g: Math.round((similarGroup.color.g * similarGroup.count + item.color.g * item.count) / totalCount),
-            b: Math.round((similarGroup.color.b * similarGroup.count + item.color.b * item.count) / totalCount)
-          };
-          similarGroup.count += item.count;
-        } else {
-          // 새로운 그룹 생성
-          groups.push({ ...item });
-        }
-      });
-
-      return groups;
-    };
-
-    // 색상 빈도순으로 정렬
-    const sortedColors = Object.values(colorFrequency)
-      .sort((a, b) => b.count - a.count);
-
-    // 비슷한 색상들을 그룹화
-    const groupedColors = groupSimilarColors(sortedColors);
-
-    // 사용 빈도가 높은 순으로 정렬하고 상위 색상 선택
-    const dominantColors = groupedColors
-      .sort((a, b) => b.count - a.count)
-      .slice(0, maxColors)
-      .map(item => item.color);
-
-    return dominantColors;
-  };
 
   // 마우스 다운 핸들러
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
