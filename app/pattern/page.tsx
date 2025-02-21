@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './pattern.module.css';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { supabase } from '@/lib/supabase';
 
 interface Color {
   r: number;
