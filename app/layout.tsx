@@ -19,8 +19,8 @@ const notoSansKr = Noto_Sans_KR({
 })
 
 export const metadata: Metadata = {
-  title: "h2_craft - Make Your Own Pattern",
-  description: "자신만의 크로스 스티치 도안을 만들어보세요.",
+  title: "h2_craft",
+  description: "뜨개질을 위한 기능들을 만듭니다.",
 };
 
 export default function RootLayout({
