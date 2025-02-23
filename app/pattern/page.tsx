@@ -373,7 +373,12 @@ export default function PatternPage() {
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
-      alert('도안이 저장되었습니다!');
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        alert('도안이 저장되었습니다!\n\n모바일에서 저장된 파일은:\niOS - Files 앱의 Downloads 폴더\nAndroid - Downloads 폴더\n에서 확인할 수 있습니다.');
+      } else {
+        alert('도안이 저장되었습니다!');
+      }
       router.push('/');
     } catch (error) {
       console.error('도안 저장 실패:', error);
