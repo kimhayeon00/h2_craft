@@ -364,21 +364,43 @@ export default function PatternPage() {
         array[i] = binaryData.charCodeAt(i);
       }
       const blob = new Blob([array], { type: 'image/png' });
-
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
+      const file = new File([blob], fileName, { type: 'image/png' });
 
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobile) {
-        alert('도안이 저장되었습니다!\n\n모바일에서 저장된 파일은:\niOS - Files 앱의 Downloads 폴더\nAndroid - Downloads 폴더\n에서 확인할 수 있습니다.');
+      
+      if (isMobile && navigator.share) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'h2_craft 도안',
+            text: 'h2_craft로 만든 도안입니다.'
+          });
+          alert('공유가 완료되었습니다!');
+          router.push('/');
+        } catch (error) {
+          console.error('공유 실패:', error);
+          // 공유가 취소되거나 실패한 경우 기존 다운로드 방식으로 진행
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(link.href);
+          alert('도안이 저장되었습니다!\n\n저장된 파일은:\niOS - Files 앱의 Downloads 폴더\nAndroid - Downloads 폴더\n에서 확인할 수 있습니다.');
+        }
       } else {
+        // 데스크톱이나 공유 API를 지원하지 않는 경우 기존 다운로드 방식 사용
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
         alert('도안이 저장되었습니다!');
       }
+      
       router.push('/');
     } catch (error) {
       console.error('도안 저장 실패:', error);
