@@ -31,7 +31,6 @@ export default function PatternPage() {
   const [originalPixelatedData, setOriginalPixelatedData] = useState<string | null>(null);
   const [colorCount, setColorCount] = useState(2);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [currentFile, setCurrentFile] = useState<File | null>(null);
 
   // 색상 유사성 임계값을 더 낮게 조정
   const threshold = 20;
@@ -367,7 +366,6 @@ export default function PatternPage() {
       }
       const blob = new Blob([array], { type: 'image/png' });
       const file = new File([blob], fileName, { type: 'image/png' });
-      setCurrentFile(file);
 
       const isAndroid = /Android/i.test(navigator.userAgent);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
