@@ -17,6 +17,7 @@ interface ColorWithCount extends Color {
 }
 
 export default function PatternPage() {
+  const isAndroid = /Android/i.test(navigator.userAgent);
   const [image, setImage] = useState<string | null>(null);
   const [pixelSize, setPixelSize] = useState(8);
   const [pixelatedImageData, setPixelatedImageData] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export default function PatternPage() {
   const [originalPixelatedData, setOriginalPixelatedData] = useState<string | null>(null);
   const [colorCount, setColorCount] = useState(2);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
 
   // 색상 유사성 임계값을 더 낮게 조정
   const threshold = 20;
@@ -365,10 +367,12 @@ export default function PatternPage() {
       }
       const blob = new Blob([array], { type: 'image/png' });
       const file = new File([blob], fileName, { type: 'image/png' });
+      setCurrentFile(file);
 
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
-      if (isMobile && navigator.share) {
+      if ((isIOS || isAndroid) && navigator.share) {
         try {
           await navigator.share({
             files: [file],
@@ -377,34 +381,34 @@ export default function PatternPage() {
           });
           alert('공유가 완료되었습니다!');
           router.push('/');
+          return;
         } catch (error) {
           console.error('공유 실패:', error);
-          // 공유가 취소되거나 실패한 경우 기존 다운로드 방식으로 진행
-          const link = document.createElement('a');
-          link.href = URL.createObjectURL(blob);
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(link.href);
-          alert('도안이 저장되었습니다!\n\n저장된 파일은:\niOS - Files 앱의 Downloads 폴더\nAndroid - Downloads 폴더\n에서 확인할 수 있습니다.');
+          // 공유 실패 시 다운로드 방식으로 진행
         }
-      } else {
-        // 데스크톱이나 공유 API를 지원하지 않는 경우 기존 다운로드 방식 사용
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
-        alert('도안이 저장되었습니다!');
       }
       
-      router.push('/');
+      handleDownload(blob, fileName);
     } catch (error) {
       console.error('도안 저장 실패:', error);
       alert('도안 저장에 실패했습니다.');
+    }
+  };
+
+  const handleDownload = (blob: Blob, fileName: string) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      alert('도안이 다운로드 되었습니다!\n\n갤러리에 저장하는 방법:\n\n1. 알림창을 아래로 내려서 다운로드된 파일을 찾아주세요\n2. 다운로드된 파일을 눌러주세요\n3. "갤러리에 저장" 또는 "이미지 저장"을 선택해주세요\n\n또는\n\n1. 파일/파일관리자 앱을 열어주세요\n2. Download 폴더를 열어주세요\n3. 방금 저장된 이미지를 찾아 길게 눌러주세요\n4. "갤러리에 저장"을 선택해주세요');
+    } else {
+      alert('도안이 저장되었습니다!');
     }
   };
 
@@ -531,12 +535,23 @@ export default function PatternPage() {
           )}
 
           <div className={styles.actionButtons}>
-            <button 
-              className={styles.saveButton}
-              onClick={handleSavePattern}
-            >
-              이대로 저장하기
-            </button>
+            {isAndroid ? (
+              <>
+                <button 
+                  className={styles.saveButton}
+                  onClick={handleSavePattern}
+                >
+                  이대로 저장하기
+                </button>
+              </>
+            ) : (
+              <button 
+                className={styles.saveButton}
+                onClick={handleSavePattern}
+              >
+                이대로 저장하기
+              </button>
+            )}
             {!isEditing && (
               <button 
                 className={styles.editButton}
