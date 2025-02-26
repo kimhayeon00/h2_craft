@@ -385,30 +385,36 @@ export default function PatternPage() {
         } catch (error) {
           console.error('공유 실패:', error);
           // 공유 실패 시 다운로드 방식으로 진행
+          await handleDownload(blob, fileName);
         }
+      } else {
+        await handleDownload(blob, fileName);
       }
-      
-      handleDownload(blob, fileName);
     } catch (error) {
       console.error('도안 저장 실패:', error);
       alert('도안 저장에 실패했습니다.');
     }
   };
 
-  const handleDownload = (blob: Blob, fileName: string) => {
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    
-    const isAndroid = /Android/i.test(navigator.userAgent);
-    if (isAndroid) {
-      alert('도안이 다운로드 되었습니다!\n\n갤러리에 저장하는 방법:\n\n1. 알림창을 아래로 내려서 다운로드된 파일을 찾아주세요\n2. 다운로드된 파일을 눌러주세요\n3. "갤러리에 저장" 또는 "이미지 저장"을 선택해주세요\n\n또는\n\n1. 파일/파일관리자 앱을 열어주세요\n2. Download 폴더를 열어주세요\n3. 방금 저장된 이미지를 찾아 길게 눌러주세요\n4. "갤러리에 저장"을 선택해주세요');
-    } else {
-      alert('도안이 저장되었습니다!');
+  const handleDownload = async (blob: Blob, fileName: string) => {
+    try {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        alert('도안이 다운로드 되었습니다!\n\n갤러리에 저장하는 방법:\n\n1. 알림창을 아래로 내려서 다운로드된 파일을 찾아주세요\n2. 다운로드된 파일을 눌러주세요\n3. "갤러리에 저장" 또는 "이미지 저장"을 선택해주세요\n\n또는\n\n1. 파일/파일관리자 앱을 열어주세요\n2. Download 폴더를 열어주세요\n3. 방금 저장된 이미지를 찾아 길게 눌러주세요\n4. "갤러리에 저장"을 선택해주세요');
+      } else {
+        alert('도안이 저장되었습니다!');
+      }
+    } catch (error) {
+      console.error('다운로드 실패:', error);
+      throw new Error('다운로드에 실패했습니다.');
     }
   };
 
