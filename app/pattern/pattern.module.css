@@ -49,7 +49,6 @@
 /* 모바일 반응형 */
 @media (max-width: 768px) {
   .uploadButton {
-    width: 90%;
     height: 80px;
   }
 }
