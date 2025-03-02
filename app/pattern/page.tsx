@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './pattern.module.css';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import GaugeInput from '../components/GaugeInput';
 
 interface Color {
   r: number;
@@ -19,7 +20,7 @@ interface ColorWithCount extends Color {
 export default function PatternPage() {
   const isAndroid = /Android/i.test(navigator.userAgent);
   const [image, setImage] = useState<string | null>(null);
-  const [pixelSize, setPixelSize] = useState(8);
+  const [pixelSize, setPixelSize] = useState(20);
   const [pixelatedImageData, setPixelatedImageData] = useState<string | null>(null);
   const [dominantColors, setDominantColors] = useState<ColorWithCount[]>([]);
   const [pixelDimensions, setPixelDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -31,6 +32,7 @@ export default function PatternPage() {
   const [originalPixelatedData, setOriginalPixelatedData] = useState<string | null>(null);
   const [colorCount, setColorCount] = useState(2);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [gauge, setGauge] = useState<{ horizontal: number; vertical: number } | null>(null);
 
   // 색상 유사성 임계값을 더 낮게 조정
   const threshold = 20;
@@ -159,11 +161,19 @@ export default function PatternPage() {
       }
     }
 
-    width = Math.floor(width / pixelSize) * pixelSize;
-    height = Math.floor(height / pixelSize) * pixelSize;
+    // 게이지 비율을 반영한 픽셀 크기 계산
+    const basePixelSize = pixelSize;
+    // 게이지 비율에 따른 픽셀 크기 조정
+    const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
+    const horizontalPixelSize = basePixelSize;
+    const verticalPixelSize = Math.round(basePixelSize * ratio);
 
-    const pixelWidth = Math.floor(width / pixelSize);
-    const pixelHeight = Math.floor(height / pixelSize);
+    // 픽셀 크기에 맞게 캔버스 크기 조정
+    width = Math.floor(width / horizontalPixelSize) * horizontalPixelSize;
+    height = Math.floor(height / verticalPixelSize) * verticalPixelSize;
+
+    const pixelWidth = Math.floor(width / horizontalPixelSize);
+    const pixelHeight = Math.floor(height / verticalPixelSize);
     setPixelDimensions({ width: pixelWidth, height: pixelHeight });
 
     const tempCanvas = document.createElement('canvas');
@@ -187,13 +197,13 @@ export default function PatternPage() {
     // 색상 사용 빈도 계산
     const colorCounts: { [key: string]: number } = {};
 
-    for (let y = 0; y < canvas.height; y += pixelSize) {
-      for (let x = 0; x < canvas.width; x += pixelSize) {
+    for (let y = 0; y < canvas.height; y += verticalPixelSize) {
+      for (let x = 0; x < canvas.width; x += horizontalPixelSize) {
         const blockColors: Color[] = [];
 
         // 블록 내의 픽셀 색상 수집
-        for (let py = y; py < Math.min(y + pixelSize, canvas.height); py++) {
-          for (let px = x; px < Math.min(x + pixelSize, canvas.width); px++) {
+        for (let py = y; py < Math.min(y + verticalPixelSize, canvas.height); py++) {
+          for (let px = x; px < Math.min(x + horizontalPixelSize, canvas.width); px++) {
             const i = (py * canvas.width + px) * 4;
             blockColors.push({
               r: imageData.data[i],
@@ -234,12 +244,12 @@ export default function PatternPage() {
 
         // 선택된 색상으로 블록 채우기
         ctx.fillStyle = `rgb(${closestColor.r}, ${closestColor.g}, ${closestColor.b})`;
-        ctx.fillRect(x, y, pixelSize, pixelSize);
+        ctx.fillRect(x, y, horizontalPixelSize, verticalPixelSize);
 
         // 그리드 그리기
-        ctx.strokeStyle = 'rgba(64, 64, 64, 1.0)';  // 더 진한 회색으로 변경
+        ctx.strokeStyle = 'rgba(64, 64, 64, 1.0)';
         ctx.lineWidth = 0.1;
-        ctx.strokeRect(x, y, pixelSize, pixelSize);
+        ctx.strokeRect(x, y, horizontalPixelSize, verticalPixelSize);
 
         // 색상 사용 빈도 업데이트
         const colorKey = `${closestColor.r},${closestColor.g},${closestColor.b}`;
@@ -248,7 +258,7 @@ export default function PatternPage() {
     }
 
     // 색상 사용 비율 계산 및 정렬
-    const totalBlocks = Math.ceil(canvas.width / pixelSize) * Math.ceil(canvas.height / pixelSize);
+    const totalBlocks = Math.ceil(canvas.width / horizontalPixelSize) * Math.ceil(canvas.height / verticalPixelSize);
     const colorsWithPercentage = Object.entries(colorCounts)
       .map(([key, count]) => {
         const [r, g, b] = key.split(',').map(Number);
@@ -263,17 +273,23 @@ export default function PatternPage() {
 
     setDominantColors(colorsWithPercentage);
     setPixelatedImageData(canvas.toDataURL());
-  }, [canvasRef, colorCount, extractDominantColors, getColorDistance]);
+  }, [canvasRef, colorCount, extractDominantColors, getColorDistance, gauge]);
+
+  const handleGaugeSubmit = (horizontalGauge: number, verticalGauge: number) => {
+    setGauge({ horizontal: horizontalGauge, vertical: verticalGauge });
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setImage(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   useEffect(() => {
@@ -332,21 +348,28 @@ export default function PatternPage() {
     const canvasX = x * scaleX;
     const canvasY = y * scaleY;
 
+    // 게이지 비율을 반영한 픽셀 크기 계산
+    const basePixelSize = pixelSize;
+    // 게이지 비율에 따른 픽셀 크기 조정
+    const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
+    const horizontalPixelSize = basePixelSize;
+    const verticalPixelSize = Math.round(basePixelSize * ratio);
+
     // 클릭한 위치의 픽셀 블록 찾기
-    const blockX = Math.floor(canvasX / pixelSize) * pixelSize;
-    const blockY = Math.floor(canvasY / pixelSize) * pixelSize;
+    const blockX = Math.floor(canvasX / horizontalPixelSize) * horizontalPixelSize;
+    const blockY = Math.floor(canvasY / verticalPixelSize) * verticalPixelSize;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // 선택한 색상으로 픽셀 블록 채우기
     ctx.fillStyle = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
-    ctx.fillRect(blockX, blockY, pixelSize, pixelSize);
+    ctx.fillRect(blockX, blockY, horizontalPixelSize, verticalPixelSize);
 
     // 그리드 다시 그리기
-    ctx.strokeStyle = 'rgba(64, 64, 64, 1.0)';  // 더 진한 회색으로 변경
+    ctx.strokeStyle = 'rgba(64, 64, 64, 1.0)';
     ctx.lineWidth = 0.1;
-    ctx.strokeRect(blockX, blockY, pixelSize, pixelSize);
+    ctx.strokeRect(blockX, blockY, horizontalPixelSize, verticalPixelSize);
 
     // 이미지 데이터 업데이트
     setPixelatedImageData(canvas.toDataURL());
@@ -438,21 +461,25 @@ export default function PatternPage() {
     <div className={styles.container}>
       <h1>Make Your Own Pattern</h1>
       
-      {!image && (  // 이미지가 없을 때만 업로드 섹션 표시
+      {!pixelatedImageData && (
         <div className={styles.uploadSection}>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            ref={fileInputRef}
-            className={styles.fileInput}
-          />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className={styles.uploadButton}
-          >
-            Upload Image
-          </button>
+          <GaugeInput onGaugeSubmit={handleGaugeSubmit} />
+          
+          <div className="mt-6">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              ref={fileInputRef}
+              className={styles.fileInput}
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className={styles.uploadButton}
+            >
+              Upload Image
+            </button>
+          </div>
         </div>
       )}
 
@@ -511,11 +538,33 @@ export default function PatternPage() {
 
           {dominantColors.length > 0 && (
             <div className={styles.colorPalette}>
-              <h3>도안 크기</h3>
-              <div>
-                <span>가로: {pixelDimensions?.width}</span>
-                <span>, 세로: {pixelDimensions?.height} </span>
-              </div>
+              {gauge ? (
+                <div className={styles.patternSizeGrid}>
+                  <div className={styles.patternSizeBox}>
+                    <div className={styles.patternSizeLabel}>게이지</div>
+                    <div className={styles.patternSizeValue}>{gauge.horizontal} × {gauge.vertical}</div>
+                  </div>
+                  <div className={styles.patternSizeBox}>
+                    <div className={styles.patternSizeLabel}>코수</div>
+                    <div className={styles.patternSizeValue}>
+                      {pixelDimensions?.width} × {pixelDimensions?.height}
+                    </div>
+                  </div>
+                  <div className={styles.patternSizeBox}>
+                    <div className={styles.patternSizeLabel}>예상 크기</div>
+                    <div className={styles.patternSizeValue}>
+                      {((pixelDimensions?.width || 0) * 10 / gauge.horizontal).toFixed(1)} cm × {((pixelDimensions?.height || 0) * 10 / gauge.vertical).toFixed(1)} cm
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.patternSizeBox}>
+                  <div className={styles.patternSizeLabel}>코수</div>
+                  <div className={styles.patternSizeValue}>
+                    {pixelDimensions?.width} × {pixelDimensions?.height}
+                  </div>
+                </div>
+              )}
               <div style={{ marginTop: '2rem' }}>
                 <h3>주요 색상</h3>
                 <div className={styles.colors}>

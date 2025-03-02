@@ -12,8 +12,11 @@
 }
 
 .uploadSection {
-  text-align: center;
-  margin-bottom: 2rem;
+  max-width: 500px;
+  margin: 0 auto 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .fileInput {
@@ -27,14 +30,13 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: transform 0.3s ease;
-  width: 400px;
+  width: 100%;
   height: 100px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  margin: 0 auto;
   border: none;
   font-size: 1.5rem;
   color: var(--text-color);
@@ -246,4 +248,50 @@
 
 .pixelatedImage {
   pointer-events: none;
+}
+
+.patternSize {
+  margin: 0;
+  padding: 1rem;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.patternSizeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .patternSizeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.patternSizeBox {
+  background-color: var(--background-color);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.patternSizeBox:hover {
+  transform: translateY(-2px);
+}
+
+.patternSizeLabel {
+  font-size: 0.9rem;
+  color: var(--text-color);
+  opacity: 0.7;
+  margin-bottom: 0.5rem;
+}
+
+.patternSizeValue {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-color);
 } 
