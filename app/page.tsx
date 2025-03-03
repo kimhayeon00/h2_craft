@@ -34,7 +34,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className={styles.socialLink}
           >
-            유튜브 바로가기
+            Youtube
           </Link>
           <Link 
             href="https://www.instagram.com/h2_craft" 
@@ -42,7 +42,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className={styles.socialLink}
           >
-            인스타 바로가기
+            Instagram
           </Link>
         </div>
         <p>&copy; 2025 h2_craft. All rights reserved.</p>
