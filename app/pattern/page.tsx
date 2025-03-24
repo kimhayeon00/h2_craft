@@ -144,6 +144,8 @@ export default function PatternPage() {
     });
     if (!ctx) return;
 
+    // 캔버스 해상도 개선을 위한 디바이스 픽셀 비율 적용
+    const dpr = window.devicePixelRatio || 1;
     const maxWidth = 1200;
     const maxHeight = 1200;
     const aspectRatio = img.width / img.height;
@@ -163,7 +165,6 @@ export default function PatternPage() {
 
     // 게이지 비율을 반영한 픽셀 크기 계산
     const basePixelSize = pixelSize;
-    // 게이지 비율에 따른 픽셀 크기 조정
     const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
     const horizontalPixelSize = basePixelSize;
     const verticalPixelSize = Math.round(basePixelSize * ratio);
@@ -176,6 +177,13 @@ export default function PatternPage() {
     const pixelHeight = Math.floor(height / verticalPixelSize);
     setPixelDimensions({ width: pixelWidth, height: pixelHeight });
 
+    // 캔버스 크기를 디바이스 픽셀 비율에 맞게 조정
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(dpr, dpr);
+
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d', { alpha: false });
     if (!tempCtx) return;
@@ -183,12 +191,11 @@ export default function PatternPage() {
     tempCanvas.width = width;
     tempCanvas.height = height;
 
+    // 이미지 스무딩 품질 개선
     tempCtx.imageSmoothingEnabled = true;
     tempCtx.imageSmoothingQuality = 'high';
     tempCtx.drawImage(img, 0, 0, width, height);
 
-    canvas.width = width;
-    canvas.height = height;
     ctx.imageSmoothingEnabled = false;
 
     const imageData = tempCtx.getImageData(0, 0, width, height);
@@ -197,14 +204,14 @@ export default function PatternPage() {
     // 색상 사용 빈도 계산
     const colorCounts: { [key: string]: number } = {};
 
-    for (let y = 0; y < canvas.height; y += verticalPixelSize) {
-      for (let x = 0; x < canvas.width; x += horizontalPixelSize) {
+    for (let y = 0; y < canvas.height / dpr; y += verticalPixelSize) {
+      for (let x = 0; x < canvas.width / dpr; x += horizontalPixelSize) {
         const blockColors: Color[] = [];
 
         // 블록 내의 픽셀 색상 수집
-        for (let py = y; py < Math.min(y + verticalPixelSize, canvas.height); py++) {
-          for (let px = x; px < Math.min(x + horizontalPixelSize, canvas.width); px++) {
-            const i = (py * canvas.width + px) * 4;
+        for (let py = y; py < Math.min(y + verticalPixelSize, canvas.height / dpr); py++) {
+          for (let px = x; px < Math.min(x + horizontalPixelSize, canvas.width / dpr); px++) {
+            const i = (py * canvas.width / dpr + px) * 4;
             blockColors.push({
               r: imageData.data[i],
               g: imageData.data[i + 1],
@@ -213,22 +220,24 @@ export default function PatternPage() {
           }
         }
 
-        // 블록의 평균 색상 계산
-        const getMedianColor = (colors: Color[]): Color => {
-          const rs = colors.map(c => c.r).sort((a, b) => a - b);
-          const gs = colors.map(c => c.g).sort((a, b) => a - b);
-          const bs = colors.map(c => c.b).sort((a, b) => a - b);
+        // 블록의 평균 색상 계산 (중앙값 대신 가중 평균 사용)
+        const getWeightedAverageColor = (colors: Color[]): Color => {
+          const weights = colors.map((_, i) => {
+            const center = colors.length / 2;
+            const distance = Math.abs(i - center);
+            return 1 / (1 + distance);
+          });
           
-          const mid = Math.floor(colors.length / 2);
+          const totalWeight = weights.reduce((a, b) => a + b, 0);
           
           return {
-            r: rs[mid],
-            g: gs[mid],
-            b: bs[mid]
+            r: Math.round(colors.reduce((sum, c, i) => sum + c.r * weights[i], 0) / totalWeight),
+            g: Math.round(colors.reduce((sum, c, i) => sum + c.g * weights[i], 0) / totalWeight),
+            b: Math.round(colors.reduce((sum, c, i) => sum + c.b * weights[i], 0) / totalWeight)
           };
         };
 
-        const blockColor = getMedianColor(blockColors);
+        const blockColor = getWeightedAverageColor(blockColors);
 
         // 가장 가까운 주요 색상 찾기
         let closestColor = dominantColors[0];
@@ -246,12 +255,15 @@ export default function PatternPage() {
         ctx.fillStyle = `rgb(${closestColor.r}, ${closestColor.g}, ${closestColor.b})`;
         ctx.fillRect(x, y, horizontalPixelSize, verticalPixelSize);
 
-        // 그리드 그리기
-        ctx.strokeStyle = 'rgba(64, 64, 64, 1.0)';
-        ctx.lineWidth = 0.1;
+        // 그리드 그리기 (보색 사용)
+        const complementaryR = 255 - closestColor.r;
+        const complementaryG = 255 - closestColor.g;
+        const complementaryB = 255 - closestColor.b;
+        ctx.strokeStyle = `rgba(${complementaryR}, ${complementaryG}, ${complementaryB}, 1)`;
+        ctx.lineWidth = 0.5;
         ctx.strokeRect(x, y, horizontalPixelSize, verticalPixelSize);
 
-        // 색상 사용 빈도 업데이트
+        // 색상 사용 빈도 카운트
         const colorKey = `${closestColor.r},${closestColor.g},${closestColor.b}`;
         colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
       }
@@ -335,40 +347,34 @@ export default function PatternPage() {
     if (!img) return;
 
     const rect = img.getBoundingClientRect();
-
-    // 이미지 내에서의 클릭 위치를 계산
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
-    // 이미지 스케일 계산
     const scaleX = canvas.width / img.offsetWidth;
     const scaleY = canvas.height / img.offsetHeight;
-
-    // 실제 캔버스 좌표로 변환
     const canvasX = x * scaleX;
     const canvasY = y * scaleY;
 
-    // 게이지 비율을 반영한 픽셀 크기 계산
     const basePixelSize = pixelSize;
-    // 게이지 비율에 따른 픽셀 크기 조정
     const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
     const horizontalPixelSize = basePixelSize;
     const verticalPixelSize = Math.round(basePixelSize * ratio);
 
-    // 클릭한 위치의 픽셀 블록 찾기
     const blockX = Math.floor(canvasX / horizontalPixelSize) * horizontalPixelSize;
     const blockY = Math.floor(canvasY / verticalPixelSize) * verticalPixelSize;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
     // 선택한 색상으로 픽셀 블록 채우기
     ctx.fillStyle = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
     ctx.fillRect(blockX, blockY, horizontalPixelSize, verticalPixelSize);
 
-    // 그리드 다시 그리기
-    ctx.strokeStyle = 'rgba(64, 64, 64, 1.0)';
-    ctx.lineWidth = 0.1;
+    // 보색으로 테두리 그리기
+    const complementaryR = 255 - selectedColor.r;
+    const complementaryG = 255 - selectedColor.g;
+    const complementaryB = 255 - selectedColor.b;
+    ctx.strokeStyle = `rgba(${complementaryR}, ${complementaryG}, ${complementaryB}, 1)`;
+    ctx.lineWidth = 0.5;
     ctx.strokeRect(blockX, blockY, horizontalPixelSize, verticalPixelSize);
 
     // 이미지 데이터 업데이트
@@ -381,7 +387,11 @@ export default function PatternPage() {
 
     try {
       const fileName = `h2_craft_pattern_${Date.now()}.png`;
-      const base64Data = pixelatedImageData.split(',')[1];
+      // 이미지 품질 개선을 위해 캔버스에서 직접 데이터 URL 생성
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const base64Data = canvas.toDataURL('image/png', 1.0).split(',')[1];
       const binaryData = atob(base64Data);
       const array = new Uint8Array(binaryData.length);
       for (let i = 0; i < binaryData.length; i++) {
@@ -441,20 +451,47 @@ export default function PatternPage() {
 
   // 되돌리기 핸들러 수정
   const handleReset = () => {
-    setPixelatedImageData(originalPixelatedData);
-    setSelectedColor(null);
     const canvas = canvasRef.current;
     if (canvas && originalPixelatedData) {
       const img = document.createElement('img');
       img.onload = () => {
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0);
+
+          // 모든 픽셀에 대해 보색 테두리 다시 그리기
+          const basePixelSize = pixelSize;
+          const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
+          const horizontalPixelSize = basePixelSize;
+          const verticalPixelSize = Math.round(basePixelSize * ratio);
+
+          for (let y = 0; y < canvas.height; y += verticalPixelSize) {
+            for (let x = 0; x < canvas.width; x += horizontalPixelSize) {
+              // 현재 픽셀의 색상 가져오기
+              const imageData = ctx.getImageData(x + 1, y + 1, 1, 1).data;
+              const color = {
+                r: imageData[0],
+                g: imageData[1],
+                b: imageData[2]
+              };
+
+              // 보색으로 테두리 그리기
+              const complementaryR = 255 - color.r;
+              const complementaryG = 255 - color.g;
+              const complementaryB = 255 - color.b;
+              ctx.strokeStyle = `rgba(${complementaryR}, ${complementaryG}, ${complementaryB}, 1)`;
+              ctx.lineWidth = 0.5;
+              ctx.strokeRect(x, y, horizontalPixelSize, verticalPixelSize);
+            }
+          }
+
+          setPixelatedImageData(canvas.toDataURL());
         }
       };
       img.src = originalPixelatedData;
     }
+    setSelectedColor(null);
   };
 
   return (
