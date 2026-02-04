@@ -113,9 +113,19 @@
 
 .imageContainer {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 2rem;
   margin-bottom: 2rem;
+}
+
+.imageContainerSingle {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.imageContainerSingle .originalImage {
+  width: calc(50% - 1rem);
 }
 
 .originalImage,
@@ -124,6 +134,10 @@
   height: auto;
   border-radius: 15px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.pixelatedImage {
+  image-rendering: pixelated;
 }
 
 .colorPalette {
@@ -239,14 +253,34 @@
   box-shadow: 0 0 0 3px var(--primary-color);
 }
 
-.editableImage {
-  cursor: crosshair;
+.canvasWrapper {
   position: relative;
-  user-select: none;
+  margin-top: 1rem;
 }
 
-.pixelatedImage {
-  pointer-events: none;
+.editableCanvas {
+  cursor: crosshair;
+  user-select: none;
+  width: 100%;
+  height: auto;
+  border-radius: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  touch-action: none;
+  image-rendering: pixelated;
+  display: block;
+}
+
+
+.hiddenCanvas {
+  display: none;
+}
+
+.editHint {
+  text-align: center;
+  color: var(--text-color);
+  opacity: 0.7;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
 }
 
 .patternSize {
@@ -293,4 +327,47 @@
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--text-color);
+}
+
+/* 로딩 오버레이 */
+.loadingOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loadingOverlay p {
+  margin-top: 1rem;
+  color: var(--text-color);
+  font-size: 1.1rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid var(--background-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 버튼 비활성화 상태 */
+.saveButton:disabled,
+.editButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 } 
