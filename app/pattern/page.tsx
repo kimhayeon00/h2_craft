@@ -3,289 +3,190 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './pattern.module.css';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import GaugeInput from '../components/GaugeInput';
-
-interface Color {
-  r: number;
-  g: number;
-  b: number;
-}
-
-interface ColorWithCount extends Color {
-  count: number;
-  percentage: number;
-}
+import { useDeviceDetect } from '@/hooks/useDeviceDetect';
+import {
+  Color,
+  ColorWithCount,
+  extractDominantColors,
+  getWeightedAverageColor,
+  findClosestColor,
+  colorKey,
+} from '@/lib/colorUtils';
 
 export default function PatternPage() {
-  const isAndroid = /Android/i.test(navigator.userAgent);
+  const { isAndroid, isMobile } = useDeviceDetect();
+
   const [image, setImage] = useState<string | null>(null);
-  const [pixelSize, setPixelSize] = useState(20);
   const [pixelatedImageData, setPixelatedImageData] = useState<string | null>(null);
+  const [originalPixelatedData, setOriginalPixelatedData] = useState<string | null>(null);
+
+  const [pixelSize, setPixelSize] = useState(20);
+  const [colorCount, setColorCount] = useState(2);
+  const [gauge, setGauge] = useState<{ horizontal: number; vertical: number } | null>(null);
+
   const [dominantColors, setDominantColors] = useState<ColorWithCount[]>([]);
   const [pixelDimensions, setPixelDimensions] = useState<{ width: number; height: number } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedColor, setSelectedColor] = useState<Color | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // 픽셀 크기 정보 저장 (격자 다시 그릴 때 필요)
+  const pixelSizeInfoRef = useRef<{ width: number; height: number; hSize: number; vSize: number } | null>(null);
+  // 색상만 저장하는 별도 캔버스 (격자 없이)
+  const colorOnlyCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const router = useRouter();
-  const [originalPixelatedData, setOriginalPixelatedData] = useState<string | null>(null);
-  const [colorCount, setColorCount] = useState(2);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [gauge, setGauge] = useState<{ horizontal: number; vertical: number } | null>(null);
 
-  // 색상 유사성 임계값을 더 낮게 조정
-  const threshold = 20;
+  /**
+   * 캔버스에 격자선 그리기 (색상 위에 직접)
+   */
+  const drawGridOnCanvas = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number, hPixelSize: number, vPixelSize: number) => {
+    ctx.strokeStyle = '#808080';
+    ctx.lineWidth = 1;
 
-  const f = useCallback((t: number) => {
-    return t > Math.pow(6/29, 3) 
-      ? Math.pow(t, 1/3) 
-      : (1/3) * Math.pow(29/6, 2) * t + 4/29;
+    ctx.beginPath();
+    for (let x = 0; x <= width; x += hPixelSize) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, height);
+    }
+    for (let y = 0; y <= height; y += vPixelSize) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(width, y + 0.5);
+    }
+    ctx.stroke();
   }, []);
 
-  const rgbToLab = useCallback((color: Color) => {
-    let r = color.r / 255;
-    let g = color.g / 255;
-    let b = color.b / 255;
-    
-    r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
-    g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
-    b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
-    
-    const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) * 100;
-    const y = (r * 0.2126 + g * 0.7152 + b * 0.0722) * 100;
-    const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) * 100;
-    
-    const xn = 95.047;
-    const yn = 100.000;
-    const zn = 108.883;
-    
-    return {
-      l: 116 * f(y/yn) - 16,
-      a: 500 * (f(x/xn) - f(y/yn)),
-      b: 200 * (f(y/yn) - f(z/zn))
-    };
-  }, [f]);
-
-  const getColorDistance = useCallback((color1: Color, color2: Color) => {
-    const lab1 = rgbToLab(color1);
-    const lab2 = rgbToLab(color2);
-    
-    return Math.sqrt(
-      Math.pow(lab1.l - lab2.l, 2) +
-      Math.pow(lab1.a - lab2.a, 2) +
-      Math.pow(lab1.b - lab2.b, 2)
-    );
-  }, [rgbToLab]);
-
-  const extractDominantColors = useCallback((imageData: ImageData, maxColors: number = 5): Color[] => {
-    const data = imageData.data;
-    const colorFrequency: { [key: string]: { color: Color; count: number } } = {};
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const color = {
-        r: data[i],
-        g: data[i + 1],
-        b: data[i + 2]
-      };
-      const key = `${color.r},${color.g},${color.b}`;
-      
-      if (colorFrequency[key]) {
-        colorFrequency[key].count++;
-      } else {
-        colorFrequency[key] = { color, count: 1 };
-      }
-    }
-
-    const groupSimilarColors = (colors: { color: Color; count: number }[]): { color: Color; count: number }[] => {
-      const groups: { color: Color; count: number }[] = [];
-
-      colors.forEach(item => {
-        const similarGroup = groups.find(group => 
-          getColorDistance(group.color, item.color) < threshold
-        );
-
-        if (similarGroup) {
-          const totalCount = similarGroup.count + item.count;
-          similarGroup.color = {
-            r: Math.round((similarGroup.color.r * similarGroup.count + item.color.r * item.count) / totalCount),
-            g: Math.round((similarGroup.color.g * similarGroup.count + item.color.g * item.count) / totalCount),
-            b: Math.round((similarGroup.color.b * similarGroup.count + item.color.b * item.count) / totalCount)
-          };
-          similarGroup.count += item.count;
-        } else {
-          groups.push({ ...item });
-        }
-      });
-
-      return groups;
-    };
-
-    const sortedColors = Object.values(colorFrequency)
-      .sort((a, b) => b.count - a.count);
-
-    const groupedColors = groupSimilarColors(sortedColors);
-
-    const dominantColors = groupedColors
-      .sort((a, b) => b.count - a.count)
-      .slice(0, maxColors)
-      .map(item => item.color);
-
-    return dominantColors;
-  }, [getColorDistance, threshold]);
-
+  /**
+   * 이미지 픽셀화 처리
+   */
   const pixelateImage = useCallback((img: HTMLImageElement, pixelSize: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d', { 
+    const ctx = canvas.getContext('2d', {
       willReadFrequently: true,
-      alpha: false
+      alpha: false,
     });
     if (!ctx) return;
 
-    // 캔버스 해상도 개선을 위한 디바이스 픽셀 비율 적용
-    const dpr = window.devicePixelRatio || 1;
-    const maxWidth = 1200;
-    const maxHeight = 1200;
-    const aspectRatio = img.width / img.height;
+    setIsProcessing(true);
 
-    let width = img.width;
-    let height = img.height;
+    try {
+      const maxWidth = 1200;
+      const maxHeight = 1200;
+      const aspectRatio = img.width / img.height;
 
-    if (width > maxWidth || height > maxHeight) {
-      if (width / maxWidth > height / maxHeight) {
-        width = maxWidth;
-        height = width / aspectRatio;
-      } else {
-        height = maxHeight;
-        width = height * aspectRatio;
-      }
-    }
+      let width = img.width;
+      let height = img.height;
 
-    // 게이지 비율을 반영한 픽셀 크기 계산
-    const basePixelSize = pixelSize;
-    const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
-    const horizontalPixelSize = basePixelSize;
-    const verticalPixelSize = Math.round(basePixelSize * ratio);
-
-    // 픽셀 크기에 맞게 캔버스 크기 조정
-    width = Math.floor(width / horizontalPixelSize) * horizontalPixelSize;
-    height = Math.floor(height / verticalPixelSize) * verticalPixelSize;
-
-    const pixelWidth = Math.floor(width / horizontalPixelSize);
-    const pixelHeight = Math.floor(height / verticalPixelSize);
-    setPixelDimensions({ width: pixelWidth, height: pixelHeight });
-
-    // 캔버스 크기를 디바이스 픽셀 비율에 맞게 조정
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
-
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d', { alpha: false });
-    if (!tempCtx) return;
-
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-
-    // 이미지 스무딩 품질 개선
-    tempCtx.imageSmoothingEnabled = true;
-    tempCtx.imageSmoothingQuality = 'high';
-    tempCtx.drawImage(img, 0, 0, width, height);
-
-    ctx.imageSmoothingEnabled = false;
-
-    const imageData = tempCtx.getImageData(0, 0, width, height);
-    const dominantColors = extractDominantColors(imageData, colorCount);
-    
-    // 색상 사용 빈도 계산
-    const colorCounts: { [key: string]: number } = {};
-
-    for (let y = 0; y < canvas.height / dpr; y += verticalPixelSize) {
-      for (let x = 0; x < canvas.width / dpr; x += horizontalPixelSize) {
-        const blockColors: Color[] = [];
-
-        // 블록 내의 픽셀 색상 수집
-        for (let py = y; py < Math.min(y + verticalPixelSize, canvas.height / dpr); py++) {
-          for (let px = x; px < Math.min(x + horizontalPixelSize, canvas.width / dpr); px++) {
-            const i = (py * canvas.width / dpr + px) * 4;
-            blockColors.push({
-              r: imageData.data[i],
-              g: imageData.data[i + 1],
-              b: imageData.data[i + 2]
-            });
-          }
+      if (width > maxWidth || height > maxHeight) {
+        if (width / maxWidth > height / maxHeight) {
+          width = maxWidth;
+          height = width / aspectRatio;
+        } else {
+          height = maxHeight;
+          width = height * aspectRatio;
         }
-
-        // 블록의 평균 색상 계산 (중앙값 대신 가중 평균 사용)
-        const getWeightedAverageColor = (colors: Color[]): Color => {
-          const weights = colors.map((_, i) => {
-            const center = colors.length / 2;
-            const distance = Math.abs(i - center);
-            return 1 / (1 + distance);
-          });
-          
-          const totalWeight = weights.reduce((a, b) => a + b, 0);
-          
-          return {
-            r: Math.round(colors.reduce((sum, c, i) => sum + c.r * weights[i], 0) / totalWeight),
-            g: Math.round(colors.reduce((sum, c, i) => sum + c.g * weights[i], 0) / totalWeight),
-            b: Math.round(colors.reduce((sum, c, i) => sum + c.b * weights[i], 0) / totalWeight)
-          };
-        };
-
-        const blockColor = getWeightedAverageColor(blockColors);
-
-        // 가장 가까운 주요 색상 찾기
-        let closestColor = dominantColors[0];
-        let minDistance = getColorDistance(blockColor, dominantColors[0]);
-
-        for (let i = 1; i < dominantColors.length; i++) {
-          const distance = getColorDistance(blockColor, dominantColors[i]);
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestColor = dominantColors[i];
-          }
-        }
-
-        // 선택된 색상으로 블록 채우기
-        ctx.fillStyle = `rgb(${closestColor.r}, ${closestColor.g}, ${closestColor.b})`;
-        ctx.fillRect(x, y, horizontalPixelSize, verticalPixelSize);
-
-        // 그리드 그리기 (보색 사용)
-        const complementaryR = 255 - closestColor.r;
-        const complementaryG = 255 - closestColor.g;
-        const complementaryB = 255 - closestColor.b;
-        ctx.strokeStyle = `rgba(${complementaryR}, ${complementaryG}, ${complementaryB}, 1)`;
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x, y, horizontalPixelSize, verticalPixelSize);
-
-        // 색상 사용 빈도 카운트
-        const colorKey = `${closestColor.r},${closestColor.g},${closestColor.b}`;
-        colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
       }
+
+      const basePixelSize = pixelSize;
+      const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
+      const horizontalPixelSize = basePixelSize;
+      const verticalPixelSize = Math.round(basePixelSize * ratio);
+
+      width = Math.floor(width / horizontalPixelSize) * horizontalPixelSize;
+      height = Math.floor(height / verticalPixelSize) * verticalPixelSize;
+
+      const pixelWidth = Math.floor(width / horizontalPixelSize);
+      const pixelHeight = Math.floor(height / verticalPixelSize);
+      setPixelDimensions({ width: pixelWidth, height: pixelHeight });
+
+      // 픽셀 크기 정보 저장
+      pixelSizeInfoRef.current = { width, height, hSize: horizontalPixelSize, vSize: verticalPixelSize };
+
+      // 캔버스 크기 설정 (DPR 없이 논리적 크기)
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = '';
+      canvas.style.height = '';
+
+      // 색상 전용 캔버스 생성
+      const colorCanvas = document.createElement('canvas');
+      colorCanvas.width = width;
+      colorCanvas.height = height;
+      colorOnlyCanvasRef.current = colorCanvas;
+      const colorCtx = colorCanvas.getContext('2d', { alpha: false });
+      if (!colorCtx) return;
+
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d', { alpha: false });
+      if (!tempCtx) return;
+
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      tempCtx.imageSmoothingEnabled = true;
+      tempCtx.imageSmoothingQuality = 'high';
+      tempCtx.drawImage(img, 0, 0, width, height);
+
+      const imageData = tempCtx.getImageData(0, 0, width, height);
+      const dominantColorsList = extractDominantColors(imageData, colorCount);
+
+      const colorCounts: { [key: string]: number } = {};
+
+      for (let y = 0; y < height; y += verticalPixelSize) {
+        for (let x = 0; x < width; x += horizontalPixelSize) {
+          const blockColors: Color[] = [];
+
+          for (let py = y; py < Math.min(y + verticalPixelSize, height); py++) {
+            for (let px = x; px < Math.min(x + horizontalPixelSize, width); px++) {
+              const i = (py * width + px) * 4;
+              blockColors.push({
+                r: imageData.data[i],
+                g: imageData.data[i + 1],
+                b: imageData.data[i + 2],
+              });
+            }
+          }
+
+          const blockColor = getWeightedAverageColor(blockColors);
+          const closestColor = findClosestColor(blockColor, dominantColorsList);
+
+          // 색상 전용 캔버스에 그리기
+          colorCtx.fillStyle = `rgb(${closestColor.r}, ${closestColor.g}, ${closestColor.b})`;
+          colorCtx.fillRect(x, y, horizontalPixelSize, verticalPixelSize);
+
+          const key = colorKey(closestColor);
+          colorCounts[key] = (colorCounts[key] || 0) + 1;
+        }
+      }
+
+      // 표시 캔버스 = 색상 + 격자
+      ctx.drawImage(colorCanvas, 0, 0);
+      drawGridOnCanvas(ctx, width, height, horizontalPixelSize, verticalPixelSize);
+
+      const colorsWithPercentage: ColorWithCount[] = Object.entries(colorCounts)
+        .map(([key, count]) => {
+          const [r, g, b] = key.split(',').map(Number);
+          const totalBlocks = pixelWidth * pixelHeight;
+          const percentage = (count / totalBlocks) * 100;
+          return { r, g, b, count, percentage };
+        })
+        .sort((a, b) => b.percentage - a.percentage);
+
+      setDominantColors(colorsWithPercentage);
+
+      // 미리보기용: 격자 포함된 이미지
+      const withGridData = canvas.toDataURL();
+      setPixelatedImageData(withGridData);
+      setOriginalPixelatedData(withGridData);
+    } finally {
+      setIsProcessing(false);
     }
-
-    // 색상 사용 비율 계산 및 정렬
-    const totalBlocks = Math.ceil(canvas.width / horizontalPixelSize) * Math.ceil(canvas.height / verticalPixelSize);
-    const colorsWithPercentage = Object.entries(colorCounts)
-      .map(([key, count]) => {
-        const [r, g, b] = key.split(',').map(Number);
-        const percentage = (count / totalBlocks) * 100;
-        return {
-          r, g, b,
-          count,
-          percentage
-        };
-      })
-      .sort((a, b) => b.percentage - a.percentage);
-
-    setDominantColors(colorsWithPercentage);
-    setPixelatedImageData(canvas.toDataURL());
-  }, [canvasRef, colorCount, extractDominantColors, getColorDistance, gauge]);
+  }, [colorCount, gauge, drawGridOnCanvas]);
 
   const handleGaugeSubmit = (horizontalGauge: number, verticalGauge: number) => {
     setGauge({ horizontal: horizontalGauge, vertical: verticalGauge });
@@ -309,50 +210,20 @@ export default function PatternPage() {
       const img = document.createElement('img');
       img.onload = () => {
         pixelateImage(img, pixelSize);
-        setOriginalPixelatedData(null);
       };
       img.src = image;
     }
   }, [image, pixelSize, colorCount, pixelateImage]);
 
-  useEffect(() => {
-    if (pixelatedImageData && !originalPixelatedData) {
-      setOriginalPixelatedData(pixelatedImageData);
-    }
-  }, [pixelatedImageData, originalPixelatedData]);
-
-  // 마우스 다운 핸들러
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDrawing(true);
-    handlePixelChange(e);  // 첫 클릭 시에도 색상 변경
-  };
-
-  // 마우스 업 핸들러
-  const handleMouseUp = () => {
-    setIsDrawing(false);
-  };
-
-  // 마우스 이동 핸들러
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDrawing) return;
-    handlePixelChange(e);
-  };
-
-  // 픽셀 색상 변경 함수 (기존 handlePixelClick을 수정)
-  const handlePixelChange = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!selectedColor || !canvasRef.current) return;
-
+  const getCanvasPixelCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    const img = e.currentTarget.querySelector('img');
-    if (!img) return;
+    if (!canvas) return null;
 
-    const rect = img.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const scaleX = canvas.width / img.offsetWidth;
-    const scaleY = canvas.height / img.offsetHeight;
-    const canvasX = x * scaleX;
-    const canvasY = y * scaleY;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const canvasX = (e.clientX - rect.left) * scaleX;
+    const canvasY = (e.clientY - rect.top) * scaleY;
 
     const basePixelSize = pixelSize;
     const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
@@ -362,69 +233,93 @@ export default function PatternPage() {
     const blockX = Math.floor(canvasX / horizontalPixelSize) * horizontalPixelSize;
     const blockY = Math.floor(canvasY / verticalPixelSize) * verticalPixelSize;
 
+    return { blockX, blockY, horizontalPixelSize, verticalPixelSize };
+  };
+
+  /**
+   * 픽셀 블록 그리기: 색상 캔버스에 칠하고 → 표시 캔버스에 색상+격자 합성
+   */
+  const drawPixelBlock = (blockX: number, blockY: number, hSize: number, vSize: number) => {
+    if (!selectedColor || !canvasRef.current) return;
+    const colorCanvas = colorOnlyCanvasRef.current;
+    if (!colorCanvas) return;
+
+    // 1. 색상 전용 캔버스에 칠하기
+    const colorCtx = colorCanvas.getContext('2d', { alpha: false });
+    if (!colorCtx) return;
+    colorCtx.fillStyle = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
+    colorCtx.fillRect(blockX, blockY, hSize, vSize);
+
+    // 2. 표시 캔버스: 해당 영역만 색상 복사 + 격자 다시 그리기
+    const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
-    // 선택한 색상으로 픽셀 블록 채우기
+    // 해당 블록 색상 칠하기
     ctx.fillStyle = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
-    ctx.fillRect(blockX, blockY, horizontalPixelSize, verticalPixelSize);
+    ctx.fillRect(blockX, blockY, hSize, vSize);
 
-    // 보색으로 테두리 그리기
-    const complementaryR = 255 - selectedColor.r;
-    const complementaryG = 255 - selectedColor.g;
-    const complementaryB = 255 - selectedColor.b;
-    ctx.strokeStyle = `rgba(${complementaryR}, ${complementaryG}, ${complementaryB}, 1)`;
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(blockX, blockY, horizontalPixelSize, verticalPixelSize);
-
-    // 이미지 데이터 업데이트
-    setPixelatedImageData(canvas.toDataURL());
+    // 해당 블록 주변 격자선 다시 그리기
+    ctx.strokeStyle = '#808080';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    // 좌, 우 세로선
+    ctx.moveTo(blockX + 0.5, blockY);
+    ctx.lineTo(blockX + 0.5, blockY + vSize);
+    ctx.moveTo(blockX + hSize + 0.5, blockY);
+    ctx.lineTo(blockX + hSize + 0.5, blockY + vSize);
+    // 상, 하 가로선
+    ctx.moveTo(blockX, blockY + 0.5);
+    ctx.lineTo(blockX + hSize, blockY + 0.5);
+    ctx.moveTo(blockX, blockY + vSize + 0.5);
+    ctx.lineTo(blockX + hSize, blockY + vSize + 0.5);
+    ctx.stroke();
   };
 
-  // 도안 저장 함수
-  const handleSavePattern = async () => {
-    if (!pixelatedImageData || !pixelDimensions) return;
-
-    try {
-      const fileName = `h2_craft_pattern_${Date.now()}.png`;
-      // 이미지 품질 개선을 위해 캔버스에서 직접 데이터 URL 생성
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      
-      const base64Data = canvas.toDataURL('image/png', 1.0).split(',')[1];
-      const binaryData = atob(base64Data);
-      const array = new Uint8Array(binaryData.length);
-      for (let i = 0; i < binaryData.length; i++) {
-        array[i] = binaryData.charCodeAt(i);
-      }
-      const blob = new Blob([array], { type: 'image/png' });
-      const file = new File([blob], fileName, { type: 'image/png' });
-
-      const isAndroid = /Android/i.test(navigator.userAgent);
-      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-      
-      if ((isIOS || isAndroid) && navigator.share) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'h2_craft 도안',
-            text: 'h2_craft로 만든 도안입니다.'
-          });
-          alert('공유가 완료되었습니다!');
-          router.push('/');
-          return;
-        } catch (error) {
-          console.error('공유 실패:', error);
-          // 공유 실패 시 다운로드 방식으로 진행
-          await handleDownload(blob, fileName);
-        }
-      } else {
-        await handleDownload(blob, fileName);
-      }
-    } catch (error) {
-      console.error('도안 저장 실패:', error);
-      alert('도안 저장에 실패했습니다.');
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const coords = getCanvasPixelCoords(e);
+    if (coords) {
+      drawPixelBlock(coords.blockX, coords.blockY, coords.horizontalPixelSize, coords.verticalPixelSize);
     }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDrawing(false);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const coords = getCanvasPixelCoords(e);
+    if (coords) {
+      drawPixelBlock(coords.blockX, coords.blockY, coords.horizontalPixelSize, coords.verticalPixelSize);
+    }
+  };
+
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    setIsDrawing(true);
+    const touch = e.touches[0];
+    const mouseEvent = { clientX: touch.clientX, clientY: touch.clientY } as React.MouseEvent<HTMLCanvasElement>;
+    const coords = getCanvasPixelCoords(mouseEvent);
+    if (coords) {
+      drawPixelBlock(coords.blockX, coords.blockY, coords.horizontalPixelSize, coords.verticalPixelSize);
+    }
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+    const touch = e.touches[0];
+    const mouseEvent = { clientX: touch.clientX, clientY: touch.clientY } as React.MouseEvent<HTMLCanvasElement>;
+    const coords = getCanvasPixelCoords(mouseEvent);
+    if (coords) {
+      drawPixelBlock(coords.blockX, coords.blockY, coords.horizontalPixelSize, coords.verticalPixelSize);
+    }
+  };
+
+  const handleCanvasTouchEnd = () => {
+    setIsDrawing(false);
   };
 
   const handleDownload = async (blob: Blob, fileName: string) => {
@@ -436,10 +331,19 @@ export default function PatternPage() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
-      
-      const isAndroid = /Android/i.test(navigator.userAgent);
+
       if (isAndroid) {
-        alert('도안이 다운로드 되었습니다!\n\n갤러리에 저장하는 방법:\n\n1. 알림창을 아래로 내려서 다운로드된 파일을 찾아주세요\n2. 다운로드된 파일을 눌러주세요\n3. "갤러리에 저장" 또는 "이미지 저장"을 선택해주세요\n\n또는\n\n1. 파일/파일관리자 앱을 열어주세요\n2. Download 폴더를 열어주세요\n3. 방금 저장된 이미지를 찾아 길게 눌러주세요\n4. "갤러리에 저장"을 선택해주세요');
+        alert(
+          '도안이 다운로드 되었습니다!\n\n갤러리에 저장하는 방법:\n\n' +
+            '1. 알림창을 아래로 내려서 다운로드된 파일을 찾아주세요\n' +
+            '2. 다운로드된 파일을 눌러주세요\n' +
+            '3. "갤러리에 저장" 또는 "이미지 저장"을 선택해주세요\n\n' +
+            '또는\n\n' +
+            '1. 파일/파일관리자 앱을 열어주세요\n' +
+            '2. Download 폴더를 열어주세요\n' +
+            '3. 방금 저장된 이미지를 찾아 길게 눌러주세요\n' +
+            '4. "갤러리에 저장"을 선택해주세요'
+        );
       } else {
         alert('도안이 저장되었습니다!');
       }
@@ -449,7 +353,46 @@ export default function PatternPage() {
     }
   };
 
-  // 되돌리기 핸들러 수정
+  const handleSavePattern = async () => {
+    if (!pixelatedImageData || !pixelDimensions) return;
+
+    try {
+      const fileName = `h2_craft_pattern_${Date.now()}.png`;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const base64Data = canvas.toDataURL('image/png', 1.0).split(',')[1];
+      const binaryData = atob(base64Data);
+      const array = new Uint8Array(binaryData.length);
+      for (let i = 0; i < binaryData.length; i++) {
+        array[i] = binaryData.charCodeAt(i);
+      }
+      const blob = new Blob([array], { type: 'image/png' });
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      if (isMobile && navigator.share) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'h2_craft 도안',
+            text: 'h2_craft로 만든 도안입니다.',
+          });
+          alert('공유가 완료되었습니다!');
+          router.push('/');
+          return;
+        } catch (error) {
+          console.error('공유 실패:', error);
+          await handleDownload(blob, fileName);
+        }
+      } else {
+        await handleDownload(blob, fileName);
+      }
+    } catch (error) {
+      console.error('도안 저장 실패:', error);
+      alert('도안 저장에 실패했습니다.');
+    }
+  };
+
   const handleReset = () => {
     const canvas = canvasRef.current;
     if (canvas && originalPixelatedData) {
@@ -460,29 +403,13 @@ export default function PatternPage() {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0);
 
-          // 모든 픽셀에 대해 보색 테두리 다시 그리기
-          const basePixelSize = pixelSize;
-          const ratio = gauge ? gauge.horizontal / gauge.vertical : 1;
-          const horizontalPixelSize = basePixelSize;
-          const verticalPixelSize = Math.round(basePixelSize * ratio);
-
-          for (let y = 0; y < canvas.height; y += verticalPixelSize) {
-            for (let x = 0; x < canvas.width; x += horizontalPixelSize) {
-              // 현재 픽셀의 색상 가져오기
-              const imageData = ctx.getImageData(x + 1, y + 1, 1, 1).data;
-              const color = {
-                r: imageData[0],
-                g: imageData[1],
-                b: imageData[2]
-              };
-
-              // 보색으로 테두리 그리기
-              const complementaryR = 255 - color.r;
-              const complementaryG = 255 - color.g;
-              const complementaryB = 255 - color.b;
-              ctx.strokeStyle = `rgba(${complementaryR}, ${complementaryG}, ${complementaryB}, 1)`;
-              ctx.lineWidth = 0.5;
-              ctx.strokeRect(x, y, horizontalPixelSize, verticalPixelSize);
+          // 색상 전용 캔버스도 복원 (격자 제거한 버전)
+          const colorCanvas = colorOnlyCanvasRef.current;
+          if (colorCanvas) {
+            const colorCtx = colorCanvas.getContext('2d', { alpha: false });
+            if (colorCtx) {
+              // 원본에서 격자 없는 색상만 다시 그리기
+              colorCtx.drawImage(img, 0, 0);
             }
           }
 
@@ -497,11 +424,18 @@ export default function PatternPage() {
   return (
     <div className={styles.container}>
       <h1>Make Your Own Pattern</h1>
-      
+
+      {isProcessing && (
+        <div className={styles.loadingOverlay}>
+          <div className={styles.spinner} />
+          <p>이미지 처리 중...</p>
+        </div>
+      )}
+
       {!pixelatedImageData && (
         <div className={styles.uploadSection}>
           <GaugeInput onGaugeSubmit={handleGaugeSubmit} />
-          
+
           <div className="mt-6">
             <input
               type="file"
@@ -510,7 +444,7 @@ export default function PatternPage() {
               ref={fileInputRef}
               className={styles.fileInput}
             />
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
               className={styles.uploadButton}
             >
@@ -534,7 +468,7 @@ export default function PatternPage() {
                   setColorCount(Number(e.target.value));
                 }}
                 className={styles.slider}
-                disabled={isEditing}
+                disabled={isEditing || isProcessing}
               />
               <span>{colorCount}색</span>
             </div>
@@ -548,28 +482,28 @@ export default function PatternPage() {
                 value={pixelSize}
                 onChange={(e) => setPixelSize(Number(e.target.value))}
                 className={styles.slider}
-                disabled={isEditing}
+                disabled={isEditing || isProcessing}
               />
               <span>{pixelSize}px</span>
             </div>
           </div>
-          
-          <div className={styles.imageContainer}>
-            <Image 
-              src={image || ''} 
+
+          <div className={isEditing ? styles.imageContainerSingle : styles.imageContainer}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={image || ''}
               alt="원본 이미지"
               className={styles.originalImage}
-              width={800}
-              height={600}
             />
-            {pixelatedImageData && (
-              <Image 
-                src={pixelatedImageData}
-                alt="픽셀화된 이미지"
-                className={styles.pixelatedImage}
-                width={800}
-                height={600}
-              />
+            {pixelatedImageData && !isEditing && (
+              <div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={pixelatedImageData}
+                  alt="픽셀화된 이미지"
+                  className={styles.pixelatedImage}
+                />
+              </div>
             )}
           </div>
 
@@ -579,7 +513,9 @@ export default function PatternPage() {
                 <div className={styles.patternSizeGrid}>
                   <div className={styles.patternSizeBox}>
                     <div className={styles.patternSizeLabel}>게이지</div>
-                    <div className={styles.patternSizeValue}>{gauge.horizontal} × {gauge.vertical}</div>
+                    <div className={styles.patternSizeValue}>
+                      {gauge.horizontal} × {gauge.vertical}
+                    </div>
                   </div>
                   <div className={styles.patternSizeBox}>
                     <div className={styles.patternSizeLabel}>코수</div>
@@ -590,7 +526,8 @@ export default function PatternPage() {
                   <div className={styles.patternSizeBox}>
                     <div className={styles.patternSizeLabel}>예상 크기</div>
                     <div className={styles.patternSizeValue}>
-                      {((pixelDimensions?.width || 0) * 10 / gauge.horizontal).toFixed(1)} cm × {((pixelDimensions?.height || 0) * 10 / gauge.vertical).toFixed(1)} cm
+                      {((pixelDimensions?.width || 0) * 10 / gauge.horizontal).toFixed(1)} cm ×{' '}
+                      {((pixelDimensions?.height || 0) * 10 / gauge.vertical).toFixed(1)} cm
                     </div>
                   </div>
                 </div>
@@ -607,10 +544,10 @@ export default function PatternPage() {
                 <div className={styles.colors}>
                   {dominantColors.map((color, index) => (
                     <div key={index} className={styles.colorItem}>
-                      <div 
+                      <div
                         className={styles.colorSwatch}
                         style={{
-                          backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})`
+                          backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})`,
                         }}
                       />
                       <div className={styles.colorInfo}>
@@ -625,41 +562,52 @@ export default function PatternPage() {
           )}
 
           <div className={styles.actionButtons}>
-            {isAndroid ? (
-              <>
-                <button 
-                  className={styles.saveButton}
-                  onClick={handleSavePattern}
-                >
-                  이대로 저장하기
-                </button>
-              </>
-            ) : (
-              <button 
-                className={styles.saveButton}
-                onClick={handleSavePattern}
-              >
-                이대로 저장하기
-              </button>
-            )}
+            <button
+              className={styles.saveButton}
+              onClick={() => {
+                if (isEditing) {
+                  const canvas = canvasRef.current;
+                  if (canvas) {
+                    setPixelatedImageData(canvas.toDataURL('image/png', 1.0));
+                  }
+                  setIsEditing(false);
+                }
+                handleSavePattern();
+              }}
+              disabled={isProcessing}
+            >
+              이대로 저장하기
+            </button>
             {!isEditing && (
-              <button 
+              <button
                 className={styles.editButton}
                 onClick={() => setIsEditing(true)}
+                disabled={isProcessing}
               >
                 도안 수정하기
               </button>
             )}
             {isEditing && (
-              <button 
-                className={styles.resetButton}
-                onClick={handleReset}
-              >
-                되돌리기
-              </button>
+              <>
+                <button
+                  className={styles.editButton}
+                  onClick={() => {
+                    const canvas = canvasRef.current;
+                    if (canvas) {
+                      setPixelatedImageData(canvas.toDataURL('image/png', 1.0));
+                    }
+                    setIsEditing(false);
+                  }}
+                >
+                  수정 완료
+                </button>
+                <button className={styles.resetButton} onClick={handleReset}>
+                  되돌리기
+                </button>
+              </>
             )}
           </div>
-          
+
           {isEditing && (
             <div className={styles.editMode}>
               <div className={styles.colorButtons}>
@@ -667,42 +615,41 @@ export default function PatternPage() {
                   <button
                     key={index}
                     className={`${styles.colorButton} ${
-                      selectedColor && 
-                      selectedColor.r === color.r && 
-                      selectedColor.g === color.g && 
-                      selectedColor.b === color.b 
-                        ? styles.selected 
+                      selectedColor &&
+                      selectedColor.r === color.r &&
+                      selectedColor.g === color.g &&
+                      selectedColor.b === color.b
+                        ? styles.selected
                         : ''
                     }`}
                     style={{
-                      backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})`
+                      backgroundColor: `rgb(${color.r}, ${color.g}, ${color.b})`,
                     }}
                     onClick={() => setSelectedColor(color)}
                   />
                 ))}
               </div>
-              <div 
-                className={styles.editableImage}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-              >
-                <Image 
-                  src={pixelatedImageData || ''}
-                  alt="수정 가능한 도안"
-                  className={styles.pixelatedImage}
-                  width={800}
-                  height={600}
-                  draggable={false}
-                />
-              </div>
+              <p className={styles.editHint}>
+                색상을 선택한 후 도안을 클릭하면 해당 픽셀의 색이 변경됩니다.
+              </p>
             </div>
           )}
         </div>
       )}
-      
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      <div className={isEditing ? styles.canvasWrapper : styles.hiddenCanvas}>
+        <canvas
+          ref={canvasRef}
+          className={styles.editableCanvas}
+          onMouseDown={isEditing ? handleCanvasMouseDown : undefined}
+          onMouseMove={isEditing ? handleCanvasMouseMove : undefined}
+          onMouseUp={isEditing ? handleCanvasMouseUp : undefined}
+          onMouseLeave={isEditing ? handleCanvasMouseUp : undefined}
+          onTouchStart={isEditing ? handleCanvasTouchStart : undefined}
+          onTouchMove={isEditing ? handleCanvasTouchMove : undefined}
+          onTouchEnd={isEditing ? handleCanvasTouchEnd : undefined}
+        />
+      </div>
     </div>
   );
-} 
+}
