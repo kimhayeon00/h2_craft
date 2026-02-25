@@ -17,11 +17,17 @@ export default function Home() {
       
       <main className={styles.main}>
         <section className={styles.features}>
-          <div 
+          <div
             className={styles.featureCard}
             onClick={() => router.push('/pattern')}
           >
-            <h3>Make Your Own Pattern</h3>
+            <h3>Pattern Maker</h3>
+          </div>
+          <div
+            className={styles.featureCard}
+            onClick={() => router.push('/ai-prompt')}
+          >
+            <h3>AI Prompt</h3>
           </div>
         </section>
       </main>

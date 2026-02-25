@@ -423,7 +423,10 @@ export default function PatternPage() {
 
   return (
     <div className={styles.container}>
-      <h1>Make Your Own Pattern</h1>
+      <header className={styles.header}>
+        <button className={styles.backButton} onClick={() => router.push('/')}>{'<'}</button>
+        <h1>Pattern Maker</h1>
+      </header>
 
       {isProcessing && (
         <div className={styles.loadingOverlay}>

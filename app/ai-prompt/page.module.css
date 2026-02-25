@@ -1,0 +1,194 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+  justify-content: center;
+  position: relative;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  color: var(--text-color);
+  font-weight: 700;
+  text-align: center;
+}
+
+.backButton {
+  position: absolute;
+  left: 0;
+  background: none;
+  border: none;
+  color: var(--text-color);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.backButton:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* 갤러리 그리드 */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+/* 갤러리 카드 */
+.card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+.imageWrapper {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  overflow: hidden;
+}
+
+.placeholder {
+  width: 100%;
+  height: 100%;
+  background-color: #e5e7eb;
+}
+
+.cardTitle {
+  padding: 0.8rem 1rem;
+  font-size: 1rem;
+  color: var(--text-color);
+  margin: 0;
+  font-weight: 600;
+}
+
+.empty {
+  color: var(--text-color);
+  font-size: 1.1rem;
+  opacity: 0.5;
+}
+
+/* 모달 오버레이 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+/* 모달 */
+.modal {
+  background: white;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modalImageWrapper {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 16px 16px 0 0;
+}
+
+.modalTitle {
+  font-size: 1.5rem;
+  color: var(--text-color);
+  font-weight: 700;
+  padding: 1.2rem 1.5rem 0.5rem;
+  margin: 0;
+}
+
+.modalDescription {
+  color: var(--text-color);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  padding: 0 1.5rem;
+  opacity: 0.7;
+}
+
+.modalButtons {
+  display: flex;
+  gap: 0.8rem;
+  padding: 1.2rem 1.5rem;
+}
+
+.copyButton {
+  padding: 0.6rem 1.4rem;
+  background-color: var(--primary-color, #9381ff);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.copyButton:hover {
+  filter: brightness(1.1);
+}
+
+.copyButton:active {
+  transform: scale(0.97);
+}
+
+.copyButton.copied {
+  background-color: var(--accent-color, #db2777);
+}
+
+.closeButton {
+  padding: 0.6rem 1.4rem;
+  background-color: #e5e7eb;
+  color: var(--text-color);
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.closeButton:hover {
+  background-color: #d1d5db;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .header h1 {
+    font-size: 2rem;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
